@@ -38,14 +38,17 @@ Price calculator configurator
 
 ## Setup Instructions
 1. Clone the repository:
-    <pre> ```git clone https://github.com/revathyforcin/alshamel-assignment.git
-    cd alshamel-assignment``` </pre>
-
-## Setup Instructions
-1. Clone the repository:
-    - Laravel 12
-    - Livewire
-    - Tailwind CSS
+    <pre>git clone https://github.com/revathyforcin/alshamel-assignment.git
+    cd alshamel-assignment</pre>
+2. Install dependencies:
+    <pre>composer install</pre>
+3. Copy the .env and generate app key:
+    <pre>cp .env.example .env
+    php artisan key:generate</pre>
+4. Configure your database in the .env file and run migrations with seeders:
+    <pre>php artisan migrate --seed</pre>
+5. Start the server:
+    <pre>php artisan serve</pre>
 
 ## 
 
