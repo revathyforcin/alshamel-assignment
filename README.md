@@ -36,13 +36,15 @@ Price calculator configurator
     - Livewire
     - Tailwind CSS
 
-
-
 ## Setup Instructions
+1. Clone the repository:
+    git clone https://github.com/revathyforcin/alshamel-assignment.git
+    cd alshamel-assignment
+
+## 
 
 1. Clone the repository:
-<code>git clone https://github.com/revathyforcin/alshamel-assignment.git
-cd alshamel-assignment</code>
+<code></code>
 You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
 
 If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
