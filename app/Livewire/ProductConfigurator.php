@@ -12,121 +12,133 @@ class ProductConfigurator extends Component
     public $products;
     public $selectedProductId;
     public $selectedOptions = []; 
-    public $userType = 'normal'; // or 'company'
+    public $userType = 'normal'; // or 'company' - use any by default
     public $price;
 
-    public $selectedProduct; // Cached selected product model
-    public $selectedAttributeOptionsForDisplay = []; // <-- NEW PUBLIC PROPERTY
+    public $selectedProduct; 
+    public $selectedAttributeOptionsForDisplay = [];
 
-    // Define the specific option IDs that trigger discounts or are relevant for calculations
-    // YOU MUST REPLACE THESE WITH THE ACTUAL IDs FROM YOUR DATABASE
-    const AT_HOME_OPTION_ID = 5;   // Example ID for 'At Home' option
-    // You might need an ID for 'Same Day' if it's special, but for now we'll just list all selected.
-    // const SAME_DAY_OPTION_ID = 6;  // Example ID for 'Same Day' option (if needed for special display)
+    const AT_HOME_OPTION_ID = 5;
 
 
     public function mount()
     {
+        // Load all products with their associated attributes and options
         $this->products = Product::with('attributeOptions.attribute')->get();
+        
+        // Set the initially selected product to the first one in the list (if any)
         $this->selectedProductId = $this->products->first()?->id;
+        
+        // Load the details of the selected product
         $this->loadSelectedProduct();
     }
 
     public function updatedSelectedProductId()
     {
+        // When the selected product ID changes (e.g., user selects a different product),
+        // reload the selected product's details
         $this->loadSelectedProduct();
     }
 
     public function updatedSelectedOptions()
     {
-        logger('updatedSelectedOptions detected change. Recalculating price.');
+        // Recalculate the final price based on the new selected options
         $this->calculatePrice();
     }
 
     public function updatedUserType()
     {
-        logger('updatedUserType detected change. Recalculating price.');
+        // Recalculate the final price based on the new user type
         $this->calculatePrice();
     }
 
     protected function loadSelectedProduct()
     {
+        // Find and set the selected product object based on selectedProductId
         $this->selectedProduct = $this->products->firstWhere('id', $this->selectedProductId);
         
-        $this->selectedOptions = []; // Always reset options when product changes
-        $this->selectedAttributeOptionsForDisplay = []; // <-- RESET NEW PROPERTY
+        // Reset selected options whenever the product changes
+        $this->selectedOptions = []; 
+        // Reset selected attribute options used for display purposes
+        $this->selectedAttributeOptionsForDisplay = [];
         if ($this->selectedProduct) {
+            // Initialize the selectedOptions array keys with attribute names, setting their values to empty strings
+            // to store user's attribute selections
             foreach ($this->selectedProduct->attributeOptions->groupBy('attribute.name') as $attributeName => $options) {
                 $this->selectedOptions[$attributeName] = ''; 
             }
         }
-        $this->calculatePrice(); // Recalculate price after product change
+        // After resetting and initializing selections, recalculate the price
+        $this->calculatePrice(); 
     }
 
     public function calculatePrice()
     {
+        // If no product is selected, clear the price and exit early
         if (!$this->selectedProduct) {
             $this->price = null;
             return;
         }
 
+        // Get base price of the selected product
         $basePrice = $this->selectedProduct->base_price ?? 0;
+        // Initialize total of attribute price additions
         $attributeTotal = 0;
-        $this->selectedAttributeOptionsForDisplay = []; // Clear for new calculation cycle
-        logger('calculatePrice called: selectedOptions state: ' . json_encode($this->selectedOptions) . ', userType: ' . $this->userType);
+        // Clear previously stored attribute options for display, to update fresh
+        $this->selectedAttributeOptionsForDisplay = [];
 
-        // Calculate total for selected attributes AND store for display
+        // Calculate total price additions for selected attribute options
         foreach ($this->selectedOptions as $attributeName => $optionId) {
             if ($optionId) {
-                $option = AttributeOption::with('attribute')->find($optionId); // Eager load attribute for display
+                // Load the full AttributeOption with its related Attribute (for display & price)
+                $option = AttributeOption::with('attribute')->find($optionId);
                 if ($option) {
+                    // Add the option's price to the attribute total
                     $attributeTotal += $option->price ?? 0;
-                    $this->selectedAttributeOptionsForDisplay[] = $option; // Store the full option object
+                    // Save this option for displaying selected attributes to user
+                    $this->selectedAttributeOptionsForDisplay[] = $option;
                 }
             }
         }
 
+        // Calculate subtotal before discounts (base price + all attribute price additions)
         $currentTotal = $basePrice + $attributeTotal;
-        $originalSubtotal = $currentTotal; // Keep track of the subtotal before any discounts
+        $originalSubtotal = $currentTotal;
 
+        // Initialize discounts tracking array for each discount type applied
         $discountsApplied = [
-            'attribute' => 0, // This will capture any OTHER attribute-based discounts
+            'attribute' => 0, 
             'subtotal' => 0,
             'user_type' => 0,
             'at_home_option' => 0, 
         ];
-
-        // --- 1. Attribute-based Discounts (applies always, first) ---
-        // This loop applies to any discount rules of type 'attribute' that are NOT 'at_home_option' if you have them.
-        // The specific 'at_home_option' discount is handled separately below.
+        // Attribute-based Discounts
         $attributeDiscounts = DiscountRule::where('type', 'attribute')->get();
         foreach ($attributeDiscounts as $rule) {
+            // Check if the discount rule's condition matches any selected option IDs
             if (in_array($rule->condition, array_values($this->selectedOptions))) {
-                // Ensure this rule isn't the specific 'at_home_option' percentage one if it's defined as 'attribute' type
-                // (e.g., if you had a DiscountRule where type='attribute', condition=AT_HOME_OPTION_ID, discount_type='percent', value=5)
-                // We handle the 5% At Home discount explicitly in its own section.
-                // If this is *only* for the 5% at home, this `if` block below could be removed.
-                // For robustness, I'll keep it, assuming there might be other attribute discounts.
-                // If AT_HOME_OPTION_ID discount rule is *only* 5% percent discount, then we need to filter that specific one out here.
-                 if ($rule->condition == self::AT_HOME_OPTION_ID && $rule->discount_type == 'percent' && $rule->value == 5) {
-                    // Skip if this is the 5% At Home discount, as it's handled in its dedicated section
+                // Skip the special 'At Home' 5% discount here as it's handled separately below
+                if ($rule->condition == self::AT_HOME_OPTION_ID && $rule->discount_type == 'percent' && $rule->value == 5) {
                     continue; 
                 }
 
+                // Calculate discount amount based on type (percent or fixed)
                 $discountAmount = $rule->discount_type === 'percent'
                     ? ($currentTotal * $rule->value / 100)
                     : $rule->value;
+                // Accumulate attribute discounts
                 $discountsApplied['attribute'] += $discountAmount;
             }
         }
+        // Subtract attribute-based discounts from current total, ensuring not below zero
         $currentTotal = max(0, $currentTotal - $discountsApplied['attribute']);
 
 
-        // --- Apply other discounts based on user type order ---
+        // Apply other discounts based on user type 
         if ($this->userType === 'company') {
             // Company user order: User Type -> At Home -> Subtotal-based
 
-            // 2. Company User Type Discount (20%)
+            // Company User Type Discount (20%)
             $companyDiscountRule = DiscountRule::where('type', 'user_type')
                                             ->where('condition', 'company')
                                             ->first();
@@ -138,7 +150,7 @@ class ProductConfigurator extends Component
                 $currentTotal = max(0, $currentTotal - $discountsApplied['user_type']);
             }
             
-            // 3. "At Home" Option Specific Discount (5%, calculated on currentTotal)
+            // "At Home" Option Specific Discount (5%, calculated on currentTotal)
             if (in_array(self::AT_HOME_OPTION_ID, array_values($this->selectedOptions))) {
                 $atHomeDiscountPercentage = 5; 
                 $discountAmount = ($currentTotal * $atHomeDiscountPercentage / 100);
@@ -146,7 +158,7 @@ class ProductConfigurator extends Component
                 $currentTotal = max(0, $currentTotal - $discountsApplied['at_home_option']);
             }
 
-            // 4. Subtotal-based Discounts (e.g., "10 Over 130") - last for company
+            // Subtotal-based Discounts (e.g., "10 Over 130") - last for company
             $subtotalDiscounts = DiscountRule::where('type', 'subtotal')->get();
             foreach ($subtotalDiscounts as $rule) {
                 if ($currentTotal >= $rule->condition) { 
@@ -159,9 +171,7 @@ class ProductConfigurator extends Component
             $currentTotal = max(0, $currentTotal - $discountsApplied['subtotal']);
 
         } else { // Covers 'normal' and any other user types
-            // Normal user order: At Home -> Subtotal-based (no generic user type discount for 'normal')
-
-            // 2. "At Home" Option Specific Discount (5%, calculated on currentTotal)
+            // "At Home" Option Specific Discount (5%, calculated on currentTotal)
             if (in_array(self::AT_HOME_OPTION_ID, array_values($this->selectedOptions))) {
                 $atHomeDiscountPercentage = 5; 
                 $discountAmount = ($currentTotal * $atHomeDiscountPercentage / 100);
@@ -169,7 +179,7 @@ class ProductConfigurator extends Component
                 $currentTotal = max(0, $currentTotal - $discountsApplied['at_home_option']);
             }
 
-            // 3. Subtotal-based Discounts (e.g., "10 Over 130") - after At Home for normal
+            // Subtotal-based Discounts (e.g., "10 Over 130") - after At Home for normal
             $subtotalDiscounts = DiscountRule::where('type', 'subtotal')->get();
             foreach ($subtotalDiscounts as $rule) {
                 if ($currentTotal >= $rule->condition) { 
@@ -180,14 +190,13 @@ class ProductConfigurator extends Component
                 }
             }
             $currentTotal = max(0, $currentTotal - $discountsApplied['subtotal']);
-
-            // No specific 'user_type' discount for 'normal' in this scenario.
         }
 
+        // Store the full breakdown and final price in the $price property
         $this->price = [
             'base' => $basePrice,
-            'attributeTotal' => $attributeTotal, // Sum of selected attribute prices
-            'subtotal' => $originalSubtotal, // Base + all attribute prices
+            'attributeTotal' => $attributeTotal,
+            'subtotal' => $originalSubtotal,
             'discounts' => $discountsApplied,
             'final' => $currentTotal,
         ];
@@ -195,7 +204,6 @@ class ProductConfigurator extends Component
 
     public function render()
     {
-        // $this->selectedAttributeOptionsForDisplay is public, so it's available in the view automatically
         return view('livewire.product-configurator');
     }
 }
