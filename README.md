@@ -39,7 +39,7 @@ Price calculator configurator
 ## Setup Instructions
 1. Clone the repository:
     <pre>git clone https://github.com/revathyforcin/alshamel-assignment.git
-cd alshamel-assignment</pre>
+    cd alshamel-assignment</pre>
 2. Install dependencies:
     <pre>composer install</pre>
 3. Copy the .env and generate app key:
