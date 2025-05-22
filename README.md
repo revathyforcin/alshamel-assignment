@@ -1,4 +1,4 @@
-Price calculator configurator
+## Price calculator configurator
 
 ## About Price calculator configurator
 <p>This is a Laravel 12 Livewire application that calculates the final price of a product based on selected attributes and dynamic discount rules. The app demonstrates logic-based price computation with real-time UI updates using Livewire.</p>
